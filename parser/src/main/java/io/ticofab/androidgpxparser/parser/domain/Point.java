@@ -2,6 +2,10 @@ package io.ticofab.androidgpxparser.parser.domain;
 
 import org.joda.time.DateTime;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 /**
  * A point containing a location, time and name.
  */
@@ -15,7 +19,7 @@ public abstract class Point {
     private final String mType;
     private final String mSym;
     private final String mCmt;
-    private final Extensions mExtensions;
+    private final List<Extension> mExtensions;
 
     Point(Builder builder) {
         mLatitude = builder.mLatitude;
@@ -27,7 +31,7 @@ public abstract class Point {
         mType = builder.mType;
         mSym = builder.mSym;
         mCmt = builder.mCmt;
-        mExtensions = builder.mExtensions;
+        mExtensions = Collections.unmodifiableList(new ArrayList<>(builder.mExtensions));
     }
 
     /**
@@ -93,7 +97,7 @@ public abstract class Point {
     /**
      * @return the extensions
      */
-    public Extensions getExtensions() {
+    public List<Extension> getExtensions() {
         return mExtensions;
     }
 
@@ -107,7 +111,7 @@ public abstract class Point {
         private String mType;
         private String mSym;
         private String mCmt;
-        private Extensions mExtensions;
+        private List<Extension> mExtensions = new ArrayList<>();
 
         public Builder setLatitude(Double latitude) {
             mLatitude = latitude;
@@ -148,12 +152,13 @@ public abstract class Point {
             mSym = sym;
             return this;
         }
+
         public Builder setCmt(String cmt) {
             mCmt = cmt;
             return this;
         }
 
-        public Builder setExtensions(Extensions extensions) {
+        public Builder setExtensions(List<Extension> extensions) {
             mExtensions = extensions;
             return this;
         }

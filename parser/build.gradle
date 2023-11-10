@@ -1,11 +1,10 @@
 plugins {
     id 'com.android.library'
-    id 'maven-publish'
 }
 
 android {
-    compileSdk 33
-    buildToolsVersion '33.0.0'
+    namespace "io.ticofab.androidgpxparser"
+    compileSdk 34
 
     useLibrary 'android.test.runner'
     useLibrary 'android.test.base'
@@ -13,7 +12,7 @@ android {
 
     defaultConfig {
         minSdkVersion 16
-        targetSdkVersion 33
+        targetSdkVersion 34
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
     buildTypes {
@@ -26,6 +25,7 @@ android {
         sourceCompatibility JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11
     }
+    namespace 'io.ticofab.androidgpxparser.parser'
 }
 
 dependencies {
@@ -38,22 +38,4 @@ dependencies {
     androidTestImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test:rules:1.5.0'
-}
-
-
-afterEvaluate {
-    publishing {
-        publications {
-            // Creates a Maven publication called "release".
-            release(MavenPublication) {
-                // Applies the component for the release build variant.
-                from components.release
-
-                // You can then customize attributes of the publication as shown below.
-                groupId = 'com.github.ticofab'
-                artifactId = 'android-gpx-parser'
-                version = '2.3.1'
-            }
-        }
-    }
 }

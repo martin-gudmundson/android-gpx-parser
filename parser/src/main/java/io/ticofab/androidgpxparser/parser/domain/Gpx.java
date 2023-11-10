@@ -11,6 +11,7 @@ public class Gpx {
     private final List<WayPoint> mWayPoints;
     private final List<Route> mRoutes;
     private final List<Track> mTracks;
+    private List<XMLAttribute> mAttributes;
 
     private Gpx(Builder builder) {
         mVersion = builder.mVersion;
@@ -19,11 +20,16 @@ public class Gpx {
         mWayPoints = Collections.unmodifiableList(new ArrayList<>(builder.mWayPoints));
         mRoutes = Collections.unmodifiableList(new ArrayList<>(builder.mRoutes));
         mTracks = Collections.unmodifiableList(new ArrayList<>(builder.mTracks));
+        mAttributes = Collections.unmodifiableList(new ArrayList<>(builder.mAttributes));
     }
 
-    public String getVersion() { return mVersion; }
+    public String getVersion() {
+        return mVersion;
+    }
 
-    public String getCreator() { return mCreator; }
+    public String getCreator() {
+        return mCreator;
+    }
 
     public Metadata getMetadata() {
         return mMetadata;
@@ -41,6 +47,18 @@ public class Gpx {
         return mTracks;
     }
 
+    public List<XMLAttribute> getAttributes() {
+        return mAttributes;
+    }
+
+    public String getNamespace() {
+        if (mVersion.equals("1.1")) {
+            return "http://www.topografix.com/GPX/1/1";
+        } else {
+            return "http://www.topografix.com/GPX/1/0";
+        }
+    }
+
     public static class Builder {
         private List<WayPoint> mWayPoints;
         private List<Route> mRoutes;
@@ -48,6 +66,8 @@ public class Gpx {
         private String mVersion;
         private String mCreator;
         private Metadata mMetadata;
+
+        private List<XMLAttribute> mAttributes;
 
         public Builder setTracks(List<Track> tracks) {
             mTracks = tracks;
@@ -76,6 +96,11 @@ public class Gpx {
 
         public Builder setMetadata(Metadata mMetadata) {
             this.mMetadata = mMetadata;
+            return this;
+        }
+
+        public Builder setAttributes(List<XMLAttribute> attributes) {
+            this.mAttributes = attributes;
             return this;
         }
 

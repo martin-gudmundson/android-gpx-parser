@@ -1,6 +1,7 @@
 apply plugin: 'com.android.application'
 
 android {
+    namespace "io.ticofab.androidgpxparser"
     compileSdk 33
     buildToolsVersion '33.0.0'
 

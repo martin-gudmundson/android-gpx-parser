@@ -3,20 +3,26 @@ package io.ticofab.androidgpxparser.parser;
 import android.util.Xml;
 
 import org.joda.time.DateTime;
+import org.joda.time.format.DateTimeFormatter;
+import org.joda.time.format.DateTimeFormatterBuilder;
 import org.joda.time.format.ISODateTimeFormat;
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
+import org.xmlpull.v1.XmlSerializer;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import io.ticofab.androidgpxparser.parser.domain.Author;
 import io.ticofab.androidgpxparser.parser.domain.Bounds;
 import io.ticofab.androidgpxparser.parser.domain.Copyright;
 import io.ticofab.androidgpxparser.parser.domain.Email;
-import io.ticofab.androidgpxparser.parser.domain.Extensions;
+import io.ticofab.androidgpxparser.parser.domain.Extension;
 import io.ticofab.androidgpxparser.parser.domain.Gpx;
 import io.ticofab.androidgpxparser.parser.domain.Link;
 import io.ticofab.androidgpxparser.parser.domain.Metadata;
@@ -27,6 +33,7 @@ import io.ticofab.androidgpxparser.parser.domain.Track;
 import io.ticofab.androidgpxparser.parser.domain.TrackPoint;
 import io.ticofab.androidgpxparser.parser.domain.TrackSegment;
 import io.ticofab.androidgpxparser.parser.domain.WayPoint;
+import io.ticofab.androidgpxparser.parser.domain.XMLAttribute;
 
 public class GPXParser {
 
@@ -86,6 +93,19 @@ public class GPXParser {
         }
     }
 
+    public void write(Gpx gpx, OutputStream out) throws IOException, IllegalArgumentException, IllegalStateException {
+        try {
+            XmlSerializer serializer = Xml.newSerializer();
+            serializer.setOutput(out, "UTF-8");
+            serializer.startDocument("UTF-8", false);
+            writeGpx(gpx, serializer);
+            serializer.endDocument();
+        } finally {
+            out.close();
+        }
+
+    }
+
     private Gpx readGpx(XmlPullParser parser) throws XmlPullParserException, IOException {
         List<WayPoint> wayPoints = new ArrayList<>();
         List<Track> tracks = new ArrayList<>();
@@ -96,6 +116,8 @@ public class GPXParser {
         Gpx.Builder builder = new Gpx.Builder();
         builder.setVersion(parser.getAttributeValue(namespace, TAG_VERSION));
         builder.setCreator(parser.getAttributeValue(namespace, TAG_CREATOR));
+        builder.setAttributes(readAttributes(parser));
+
 
         while (loopMustContinue(parser.next())) {
             if (parser.getEventType() != XmlPullParser.START_TAG) {
@@ -223,21 +245,29 @@ public class GPXParser {
     // Processes summary tags in the feed.
     private TrackSegment readSegment(XmlPullParser parser) throws IOException, XmlPullParserException {
         List<TrackPoint> points = new ArrayList<>();
+        List<Extension> extensions = new ArrayList<>();
         parser.require(XmlPullParser.START_TAG, namespace, TAG_SEGMENT);
         while (loopMustContinue(parser.next())) {
             if (parser.getEventType() != XmlPullParser.START_TAG) {
                 continue;
             }
             String name = parser.getName();
-            if (TAG_TRACK_POINT.equals(name)) {
-                points.add(readTrackPoint(parser));
-            } else {
-                skip(parser);
+            switch (name) {
+                case TAG_TRACK_POINT:
+                    points.add(readTrackPoint(parser));
+                    break;
+                case TAG_EXTENSIONS:
+                    extensions.addAll(readExtensions(parser));
+                    break;
+                default:
+                    skip(parser);
+                    break;
             }
         }
         parser.require(XmlPullParser.END_TAG, namespace, TAG_SEGMENT);
         return new TrackSegment.Builder()
                 .setTrackPoints(points)
+                .setExtensions(extensions)
                 .build();
     }
 
@@ -501,6 +531,7 @@ public class GPXParser {
         parser.require(XmlPullParser.END_TAG, namespace, TAG_TIME);
         return time;
     }
+
     private String readSym(XmlPullParser parser) throws IOException, XmlPullParserException {
         parser.require(XmlPullParser.START_TAG, namespace, TAG_SYM);
         String value = readText(parser);
@@ -552,26 +583,69 @@ public class GPXParser {
         return year;
     }
 
-    private Extensions readExtensions(XmlPullParser parser) throws IOException, XmlPullParserException {
-        Extensions.Builder extensionsBuilder = new Extensions.Builder();
+    private List<Extension> readExtensions(XmlPullParser parser) throws IOException, XmlPullParserException {
+        List<Extension> extensions = new ArrayList<>();
 
         parser.require(XmlPullParser.START_TAG, namespace, TAG_EXTENSIONS);
         while (loopMustContinue(parser.next())) {
             if (parser.getEventType() != XmlPullParser.START_TAG) {
                 continue;
             }
-            String name = parser.getName();
-            switch (name) {
-                case TAG_SPEED:
-                    extensionsBuilder.setSpeed(readSpeed(parser));
-                    break;
-                default:
-                    skip(parser);
-                    break;
-            }
+            extensions.addAll(readChildExtensions(parser));
         }
         parser.require(XmlPullParser.END_TAG, namespace, TAG_EXTENSIONS);
-        return extensionsBuilder.build();
+
+        return extensions;
+    }
+
+    private List<Extension> readChildExtensions(XmlPullParser parser) throws IOException, XmlPullParserException {
+        List<Extension> extensions = new ArrayList<>();
+        while (parser.getEventType() == XmlPullParser.START_TAG) {
+            extensions.add(readExtension(parser));
+        }
+
+        return extensions;
+    }
+
+    private Extension readExtension(XmlPullParser parser) throws IOException, XmlPullParserException {
+
+        if (parser.getEventType() != XmlPullParser.START_TAG) {
+            throw new IOException("Expecting readExtension to already be in a START_TAG event type");
+        }
+
+        Extension.Builder extensionBuilder = new Extension.Builder();
+        extensionBuilder.setName(parser.getName());
+        extensionBuilder.setPrefix(parser.getPrefix());
+        extensionBuilder.setNamespace(parser.getNamespace(parser.getPrefix()));
+        extensionBuilder.setAttributes(readAttributes(parser));
+        extensionBuilder.setValue(readText(parser));
+
+        switch (parser.getEventType()) {
+            case XmlPullParser.END_TAG:
+                extensionBuilder.setChildren(new ArrayList<>());
+                parser.nextTag();
+                break;
+            case XmlPullParser.START_TAG:
+                extensionBuilder.setChildren(readChildExtensions(parser));
+                break;
+        }
+
+        return extensionBuilder.build();
+    }
+
+    private List<XMLAttribute> readAttributes(XmlPullParser parser) {
+        List<XMLAttribute> attributes = new ArrayList<>();
+        for (int i = 0; i < parser.getAttributeCount(); i++) {
+            attributes.add(new XMLAttribute.Builder()
+                    .setName(parser.getAttributeName(i))
+                    .setValue(parser.getAttributeValue(i))
+                    .setType(parser.getAttributeType(i))
+                    .setPrefix(parser.getAttributePrefix(i))
+                    .setNamespace(parser.getAttributeNamespace(i))
+                    .build()
+            );
+        }
+        return attributes;
     }
 
     private void skip(XmlPullParser parser) throws XmlPullParserException, IOException {
@@ -593,5 +667,212 @@ public class GPXParser {
 
     private boolean loopMustContinue(int next) {
         return next != XmlPullParser.END_TAG && next != XmlPullParser.END_DOCUMENT;
+    }
+
+    private void writeGpx(Gpx gpx, XmlSerializer serializer) throws IOException, IllegalStateException, IllegalArgumentException {
+
+        // Need to set namespaces before start tag
+        serializer.setPrefix("", gpx.getNamespace());
+        writePrefixes(gpx.getAttributes(), serializer);
+        serializer.startTag(gpx.getNamespace(), TAG_GPX);
+
+        // Set attributes for GPX Tag
+        serializer.attribute(null, TAG_CREATOR, gpx.getCreator());
+        serializer.attribute(null, TAG_VERSION, gpx.getVersion());
+
+        List<String> mSkipKeys = new ArrayList<>();
+        mSkipKeys.add(TAG_CREATOR);
+        mSkipKeys.add(TAG_VERSION);
+        writeAttributes(gpx.getAttributes(), mSkipKeys, serializer);
+
+        // Set Meta data
+        writeMetadata(gpx.getMetadata(), gpx.getNamespace(), serializer);
+        // Set Waypoints
+        writeWayPoints(gpx.getWayPoints(), gpx.getNamespace(), serializer);
+
+        serializer.endTag(gpx.getNamespace(), TAG_GPX);
+    }
+
+    private void writePrefixes(List<XMLAttribute> attributes, XmlSerializer serializer) throws IOException, IllegalStateException, IllegalArgumentException {
+        for (int i = 0; i < attributes.size(); i++) {
+            XMLAttribute attribute = attributes.get(i);
+            if (!attribute.getPrefix().isEmpty()) {
+                serializer.setPrefix(attribute.getPrefix(), attribute.getNamespace());
+            }
+        }
+    }
+
+
+    private void writeAttributes(List<XMLAttribute> attributes, List<String> skipKeys, XmlSerializer serializer) throws IOException, IllegalStateException, IllegalArgumentException {
+        for (int i = 0; i < attributes.size(); i++) {
+            XMLAttribute attribute = attributes.get(i);
+            if (skipKeys != null && skipKeys.contains(attribute.getName())) {
+                continue;
+            }
+
+            serializer.attribute(attribute.getNamespace(), attribute.getName(), attribute.getValue());
+            serializer.setPrefix(attribute.getPrefix(), attribute.getNamespace());
+        }
+    }
+
+    private void writeMetadata(Metadata metadata, String namespace, XmlSerializer serializer) throws IOException, IllegalStateException, IllegalArgumentException {
+        if (metadata == null) {
+            return;
+        }
+
+        serializer.startTag(namespace, TAG_METADATA);
+        writeTagWithText(TAG_NAME, metadata.getName(), namespace, serializer);
+        writeTagWithText(TAG_DESC, metadata.getDesc(), namespace, serializer);
+        writeAuthor(metadata.getAuthor(), namespace, serializer);
+        writeCopyright(metadata.getCopyright(), namespace, serializer);
+        writeLink(metadata.getLink(), namespace, serializer);
+        writeTagWithText(TAG_KEYWORDS, metadata.getKeywords(), namespace, serializer);
+        writeTime(metadata.getTime(), namespace, serializer);
+        writeBounds(metadata.getBounds(), namespace, serializer);
+        // Extensions in metadata not yet supported
+
+        serializer.endTag(namespace, TAG_METADATA);
+    }
+
+    private void writeWayPoints(List<WayPoint> wayPoints, String namespace, XmlSerializer serializer) throws IOException, IllegalStateException, IllegalArgumentException {
+        if (wayPoints == null) {
+            return;
+        }
+        for (int i = 0; i < wayPoints.size(); i++) {
+            writeWayPoint(wayPoints.get(i), namespace, serializer);
+        }
+    }
+
+    private void writeWayPoint(WayPoint wayPoint, String namespace, XmlSerializer serializer) throws IOException, IllegalStateException, IllegalArgumentException {
+        if (wayPoint == null) {
+            return;
+        }
+
+        serializer.startTag(namespace, TAG_WAY_POINT);
+        serializer.attribute(null, TAG_LAT, wayPoint.getLatitude().toString());
+        serializer.attribute(null, TAG_LON, wayPoint.getLongitude().toString());
+
+        writeTagWithText(TAG_ELEVATION, wayPoint.getElevation(), namespace, serializer);
+        writeTime(wayPoint.getTime(), namespace, serializer);
+        writeTagWithText(TAG_NAME, wayPoint.getName(), namespace, serializer);
+        writeTagWithText(TAG_DESC, wayPoint.getDesc(), namespace, serializer);
+        writeTagWithText(TAG_TYPE, wayPoint.getType(), namespace, serializer);
+        writeTagWithText(TAG_SYM, wayPoint.getSym(), namespace, serializer);
+        writeTagWithText(TAG_CMT, wayPoint.getCmt(), namespace, serializer);
+        writeRootExtensions(wayPoint.getExtensions(), namespace, serializer);
+
+        serializer.endTag(namespace, TAG_WAY_POINT);
+    }
+
+    private void writeTagWithText(String tag, Object value, String namespace, XmlSerializer serializer) throws IOException, IllegalStateException, IllegalArgumentException {
+        if (value == null) {
+            return;
+        }
+
+        serializer.startTag(namespace, tag);
+        serializer.text(value.toString());
+        serializer.endTag(namespace, tag);
+    }
+
+    private void writeAuthor(Author author, String namespace, XmlSerializer serializer) throws IOException, IllegalStateException, IllegalArgumentException {
+        if (author == null) {
+            return;
+        }
+
+        serializer.startTag(namespace, TAG_AUTHOR);
+        writeTagWithText(TAG_NAME, author.getName(), namespace, serializer);
+        writeEmail(author.getEmail(), namespace, serializer);
+        writeLink(author.getLink(), namespace, serializer);
+        serializer.endTag(namespace, TAG_AUTHOR);
+
+    }
+
+    private void writeEmail(Email email, String namespace, XmlSerializer serializer) throws IOException, IllegalStateException, IllegalArgumentException {
+        if (email == null) {
+            return;
+        }
+
+        serializer.startTag(namespace, TAG_EMAIL);
+        serializer.attribute(null, TAG_ID, email.getId());
+        serializer.attribute(null, TAG_DOMAIN, email.getDomain());
+        serializer.endTag(namespace, TAG_EMAIL);
+    }
+
+    private void writeLink(Link link, String namespace, XmlSerializer serializer) throws IOException, IllegalStateException, IllegalArgumentException {
+        if (link == null) {
+            return;
+        }
+
+        serializer.startTag(namespace, TAG_LINK);
+        serializer.attribute(null, TAG_HREF, link.getHref());
+        writeTagWithText(TAG_TEXT, link.getText(), namespace, serializer);
+        writeTagWithText(TAG_TYPE, link.getType(), namespace, serializer);
+        serializer.endTag(namespace, TAG_LINK);
+    }
+
+    private void writeCopyright(Copyright copyright, String namespace, XmlSerializer serializer) throws IOException, IllegalStateException, IllegalArgumentException {
+        if (copyright == null) {
+            return;
+        }
+        serializer.startTag(namespace, TAG_COPYRIGHT);
+        serializer.attribute(null, TAG_AUTHOR, copyright.getAuthor());
+        writeTagWithText(TAG_YEAR, copyright.getYear(), namespace, serializer);
+        writeTagWithText(TAG_LICENSE, copyright.getLicense(), namespace, serializer);
+        serializer.endTag(namespace, TAG_COPYRIGHT);
+    }
+
+    private void writeTime(DateTime dateTime, String namespace, XmlSerializer serializer) throws IOException, IllegalStateException, IllegalArgumentException {
+        if (dateTime == null) {
+            return;
+        }
+
+        writeTagWithText(TAG_TIME, ISODateTimeFormat.dateTime().print(dateTime), namespace, serializer);
+    }
+
+    private void writeBounds(Bounds bounds, String namespace, XmlSerializer serializer) throws IOException, IllegalStateException, IllegalArgumentException {
+        if (bounds == null) {
+            return;
+        }
+        serializer.startTag(namespace, TAG_BOUNDS);
+        serializer.attribute(null, TAG_MIN_LAT, bounds.getMinLat().toString());
+        serializer.attribute(null, TAG_MIN_LON, bounds.getMinLon().toString());
+        serializer.attribute(null, TAG_MAX_LAT, bounds.getMaxLat().toString());
+        serializer.attribute(null, TAG_MAX_LON, bounds.getMaxLon().toString());
+        serializer.endTag(namespace, TAG_BOUNDS);
+    }
+
+    private void writeRootExtensions(List<Extension> extensions, String namespace, XmlSerializer serializer) throws IOException, IllegalStateException, IllegalArgumentException {
+        if (extensions == null || extensions.size() == 0) {
+            return;
+        }
+
+        serializer.startTag(namespace, TAG_EXTENSIONS);
+        writeExtensions(extensions, serializer);
+        serializer.endTag(namespace, TAG_EXTENSIONS);
+    }
+
+    private void writeExtensions(List<Extension> extensions, XmlSerializer serializer) throws IOException, IllegalStateException, IllegalArgumentException {
+        if (extensions == null || extensions.size() == 0) {
+            return;
+        }
+
+        for (int i = 0; i < extensions.size(); i++) {
+            writeExtension(extensions.get(i), serializer);
+        }
+    }
+
+
+    private void writeExtension(Extension extension, XmlSerializer serializer) throws IOException, IllegalStateException, IllegalArgumentException {
+        if (extension == null) {
+            return;
+        }
+
+        writePrefixes(extension.getAttributes(), serializer);
+        serializer.setPrefix(extension.getPrefix(), extension.getNamespace());
+        serializer.startTag(extension.getNamespace(), extension.getName());
+        writeAttributes(extension.getAttributes(), null, serializer);
+        serializer.text(extension.getValue());
+        writeExtensions(extension.getChildren(), serializer);
+        serializer.endTag(extension.getNamespace(), extension.getName());
     }
 }
