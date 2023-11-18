@@ -871,7 +871,9 @@ public class GPXParser {
         serializer.setPrefix(extension.getPrefix(), extension.getNamespace());
         serializer.startTag(extension.getNamespace(), extension.getName());
         writeAttributes(extension.getAttributes(), null, serializer);
-        serializer.text(extension.getValue());
+        if (extension.getValue() != null) {
+            serializer.text(extension.getValue());
+        }
         writeExtensions(extension.getChildren(), serializer);
         serializer.endTag(extension.getNamespace(), extension.getName());
     }

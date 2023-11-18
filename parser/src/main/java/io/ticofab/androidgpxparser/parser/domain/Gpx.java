@@ -60,14 +60,14 @@ public class Gpx {
     }
 
     public static class Builder {
-        private List<WayPoint> mWayPoints;
-        private List<Route> mRoutes;
-        private List<Track> mTracks;
+        private List<WayPoint> mWayPoints = new ArrayList<>();
+        private List<Route> mRoutes = new ArrayList<>();
+        private List<Track> mTracks = new ArrayList<>();
         private String mVersion;
         private String mCreator;
         private Metadata mMetadata;
 
-        private List<XMLAttribute> mAttributes;
+        private List<XMLAttribute> mAttributes = new ArrayList<>();
 
         public Builder setTracks(List<Track> tracks) {
             mTracks = tracks;

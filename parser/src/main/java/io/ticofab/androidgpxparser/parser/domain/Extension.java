@@ -1,5 +1,6 @@
 package io.ticofab.androidgpxparser.parser.domain;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -24,8 +25,8 @@ public class Extension {
         this.mValue = builder.mValue;
         this.mPrefix = builder.mPrefix;
         this.mNamespace = builder.mNamespace;
-        this.mChildren = Collections.unmodifiableList(builder.mChildren);
-        this.mAttributes = Collections.unmodifiableList(builder.mAttributes);
+        this.mChildren = Collections.unmodifiableList(new ArrayList<>(builder.mChildren));
+        this.mAttributes = Collections.unmodifiableList(new ArrayList<>(builder.mAttributes));
     }
 
     public String getName() {
@@ -59,8 +60,8 @@ public class Extension {
         private String mPrefix;
         private String mNamespace;
 
-        private List<Extension> mChildren;
-        private List<XMLAttribute> mAttributes;
+        private List<Extension> mChildren = new ArrayList<>();
+        private List<XMLAttribute> mAttributes = new ArrayList<>();
 
         public Extension.Builder setName(String name) {
             mName = name;
